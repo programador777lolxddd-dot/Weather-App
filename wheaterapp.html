@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clima — Liquid Glass</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1024 1024'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0%25' stop-color='%2380BBFA'/%3E%3Cstop offset='100%25' stop-color='%235E9CF4'/%3E%3C/linearGradient%3E%3ClinearGradient id='sun' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0%25' stop-color='%23FFE278'/%3E%3Cstop offset='100%25' stop-color='%23EAB13D'/%3E%3C/linearGradient%3E%3Cfilter id='s' x='-20%25' y='-20%25' width='140%25' height='140%25'%3E%3CfeDropShadow dx='0' dy='12' stdDeviation='18' flood-color='%234A80D0' flood-opacity='0.25'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='1024' height='1024' rx='230' ry='230' fill='url(%23bg)'/%3E%3Ccircle cx='680' cy='400' r='170' fill='url(%23sun)' filter='url(%23s)'/%3E%3Cpath d='M 340 700 A 100 100 0 0 1 320 520 A 150 150 0 0 1 580 460 A 140 140 0 0 1 700 700 Z' fill='%23fff' filter='url(%23s)'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --lg-blur: 20px;
+    --lg-saturate: 180%;
+    --lg-border: rgba(255,255,255,.22);
+    --lg-shadow: rgba(0,0,0,.18);
+    --ease-apple: cubic-bezier(.22,1,.36,1);
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+
+  body{
+    min-height:100vh;
+    font-family:-apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif;
+    color:#fff;
+    background:#0a1a2f;
+    padding:24px 16px 48px;
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+    position:relative;
+  }
+
+  /* Fondo WebGL */
+  #bg-canvas{
+    position:fixed;
+    inset:0;
+    width:100%;
+    height:100%;
+    z-index:0;
+    display:block;
+  }
+
+  /* Luz ambiental */
+  body::before{
+    content:'';
+    position:fixed;inset:-30%;
+    background:
+      radial-gradient(circle at 15% 20%, rgba(255,255,255,.15), transparent 35%),
+      radial-gradient(circle at 85% 80%, rgba(180,220,255,.12), transparent 35%);
+    animation:drift 24s ease-in-out infinite alternate;
+    pointer-events:none;z-index:1;
+    filter:blur(24px);
+  }
+  @keyframes drift{
+    0%  {transform:translate(0,0) scale(1)}
+    50% {transform:translate(3%,-2%) scale(1.06)}
+    100%{transform:translate(-2%,3%) scale(1.02)}
+  }
+
+  .app{
+    max-width:900px;margin:0 auto;position:relative;z-index:2;
+  }
+
+  /* ==========================================================
+     ELEMENTOS LIQUID GLASS
+     Fallback CSS robusto (si liquidGL no carga)
+     ========================================================== */
+  .liquidGL{
+    position:relative;
+    border-radius:28px;
+    overflow:hidden;
+    background:linear-gradient(135deg, rgba(255,255,255,.20) 0%, rgba(255,255,255,.08) 50%, rgba(255,255,255,.20) 100%);
+    -webkit-backdrop-filter:blur(var(--lg-blur)) saturate(var(--lg-saturate));
+    backdrop-filter:blur(var(--lg-blur)) saturate(var(--lg-saturate));
+    border:1px solid var(--lg-border);
+    box-shadow:
+      0 12px 40px var(--lg-shadow),
+      0 2px 8px rgba(0,0,0,.08),
+      inset 0 1.5px 0 rgba(255,255,255,.85),
+      inset 0 0.5px 0 rgba(255,255,255,.4),
+      inset 0 -1px 0 rgba(0,0,0,.06);
+  }
+  .liquidGL::before{
+    content:'';
+    position:absolute;top:0;left:0;right:0;height:55%;
+    background:linear-gradient(180deg, rgba(255,255,255,.10), transparent);
+    pointer-events:none;border-radius:inherit;z-index:0;
+  }
+  .liquidGL::after{
+    content:'';
+    position:absolute;top:0;left:8%;right:8%;height:1px;
+    background:linear-gradient(90deg, transparent, rgba(255,255,255,.9), transparent);
+    pointer-events:none;z-index:2;
+  }
+  .liquidGL > .content{
+    position:relative;
+    z-index:2;
+    padding:24px;
+    border-radius:inherit;
+  }
+
+  /* Si liquidGL se inicializa correctamente, el canvas se coloca detrás del contenido */
+  .liquidGL canvas{
+    position:absolute;
+    inset:0;
+    width:100%;
+    height:100%;
+    z-index:0;
+    pointer-events:none;
+    border-radius:inherit;
+  }
+
+  /* ==========================================================
+     Buscador
+     ========================================================== */
+  .topbar{
+    position:sticky;top:16px;z-index:50;margin-bottom:18px;
+    border-radius:999px;
+  }
+  .topbar .content{
+    padding:6px 6px 6px 20px !important;
+    display:flex;align-items:center;gap:6px;
+    border-radius:inherit;
+  }
+  .search input{
+    flex:1;min-width:0;background:none;border:none;outline:none;
+    color:#fff;font-size:1rem;font-family:inherit;padding:10px 0;
+    letter-spacing:.1px;
+  }
+  .search input::placeholder{color:rgba(255,255,255,.7)}
+
+  .icon-btn{
+    width:42px;height:42px;flex:0 0 auto;border:none;border-radius:50%;
+    background:linear-gradient(180deg, rgba(255,255,255,.28), rgba(255,255,255,.1));
+    color:#fff;font-size:1.05rem;cursor:pointer;
+    display:grid;place-items:center;
+    box-shadow:
+      0 2px 6px rgba(0,0,0,.15),
+      inset 0 1px 0 rgba(255,255,255,.55);
+    transition:all .35s cubic-bezier(.34,1.56,.64,1);
+  }
+  .icon-btn:hover{
+    background:linear-gradient(180deg, rgba(255,255,255,.42), rgba(255,255,255,.2));
+    transform:scale(1.08);
+  }
+  .icon-btn:active{transform:scale(.92)}
+
+  .suggestions{
+    list-style:none;position:absolute;top:calc(100% + 8px);left:0;right:0;
+    background:linear-gradient(180deg, rgba(20,32,52,.9), rgba(20,32,52,.8));
+    -webkit-backdrop-filter:blur(40px) saturate(200%);
+    backdrop-filter:blur(40px) saturate(200%);
+    border:1px solid rgba(255,255,255,.2);
+    border-radius:22px;overflow:hidden;
+    box-shadow:0 24px 60px rgba(0,0,0,.4);
+    display:none;
+  }
+  .suggestions.show{display:block;animation:fadeUp .25s var(--ease-apple)}
+  .suggestions li{
+    padding:12px 20px;cursor:pointer;display:flex;flex-direction:column;gap:2px;
+    border-bottom:1px solid rgba(255,255,255,.06);
+  }
+  .suggestions li:last-child{border-bottom:none}
+  .suggestions li:hover{background:rgba(255,255,255,.1)}
+  .suggestions li strong{font-weight:600;font-size:.95rem}
+  .suggestions li span{font-size:.78rem;opacity:.65}
+
+  /* ==========================================================
+     Tarjetas
+     ========================================================== */
+  .card{
+    margin-bottom:16px;
+    animation:fadeUp .6s var(--ease-apple) both;
+  }
+  .card > .content{position:relative;z-index:1}
+
+  .section-title{
+    font-size:.72rem;text-transform:uppercase;letter-spacing:1.8px;
+    opacity:.72;margin-bottom:16px;font-weight:600;
+  }
+
+  /* ==========================================================
+     Clima actual
+     ========================================================== */
+  .current{text-align:center;padding:32px 24px 28px !important}
+  .place h1{
+    font-size:1.55rem;font-weight:600;letter-spacing:-.5px;
+    text-shadow:0 1px 4px rgba(0,0,0,.15);
+  }
+  .place .region{font-size:.85rem;opacity:.75;margin-top:4px}
+  .place .date{font-size:.8rem;opacity:.62;margin-top:6px}
+  .now-row{
+    display:flex;align-items:center;justify-content:center;gap:14px;
+    margin:14px 0 2px;
+  }
+  .now-row .icon{
+    font-size:4.6rem;line-height:1;
+    filter:drop-shadow(0 10px 24px rgba(0,0,0,.35));
+    animation:liquidFloat 5s ease-in-out infinite;
+  }
+  @keyframes liquidFloat{
+    0%,100%{transform:translateY(0) rotate(0deg) scale(1)}
+    50%    {transform:translateY(-8px) rotate(-2deg) scale(1.06)}
+  }
+  .temp{
+    font-size:4.6rem;font-weight:200;letter-spacing:-4px;line-height:1;
+    background:linear-gradient(180deg, #fff 0%, rgba(255,255,255,.82) 100%);
+    -webkit-background-clip:text;background-clip:text;
+    -webkit-text-fill-color:transparent;
+    filter:drop-shadow(0 3px 10px rgba(0,0,0,.2));
+  }
+  .temp sup{
+    font-size:1.4rem;font-weight:400;letter-spacing:0;
+    vertical-align:top;opacity:.85;
+  }
+  .desc{font-size:1.05rem;font-weight:500;margin-top:10px}
+  .feels{font-size:.85rem;opacity:.72;margin-top:4px}
+
+  .stats{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(108px,1fr));
+    gap:10px;margin-top:26px;text-align:center;
+  }
+  .stat{
+    background:linear-gradient(180deg, rgba(255,255,255,.16), rgba(255,255,255,.05));
+    border:1px solid rgba(255,255,255,.14);
+    border-radius:18px;padding:14px 8px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.55);
+    transition:all .35s cubic-bezier(.34,1.56,.64,1);
+  }
+  .stat:hover{
+    transform:translateY(-3px);
+    background:linear-gradient(180deg, rgba(255,255,255,.24), rgba(255,255,255,.1));
+  }
+  .stat .ico{font-size:1.05rem;line-height:1}
+  .stat .lbl{font-size:.66rem;opacity:.68;text-transform:uppercase;letter-spacing:.6px;margin-top:6px}
+  .stat .val{font-size:1rem;font-weight:600;margin-top:3px}
+
+  /* ==========================================================
+     Horario (scrollbar oculta)
+     ========================================================== */
+  .hourly-scroll{
+    display:flex;gap:8px;overflow-x:auto;padding:2px 0 4px;
+    scrollbar-width:none;-ms-overflow-style:none;
+    -webkit-mask-image:linear-gradient(90deg, transparent 0, #000 22px, #000 calc(100% - 22px), transparent 100%);
+    mask-image:linear-gradient(90deg, transparent 0, #000 22px, #000 calc(100% - 22px), transparent 100%);
+  }
+  .hourly-scroll::-webkit-scrollbar{display:none;width:0;height:0}
+  .hour{
+    flex:0 0 auto;width:72px;text-align:center;padding:14px 6px;
+    border-radius:20px;
+    background:linear-gradient(180deg, rgba(255,255,255,.15), rgba(255,255,255,.05));
+    border:1px solid rgba(255,255,255,.13);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.55);
+    transition:all .35s cubic-bezier(.34,1.56,.64,1);
+  }
+  .hour:hover{transform:translateY(-3px);background:linear-gradient(180deg, rgba(255,255,255,.26), rgba(255,255,255,.1))}
+  .hour.is-now{background:linear-gradient(180deg, rgba(255,255,255,.34), rgba(255,255,255,.16));border-color:rgba(255,255,255,.4)}
+  .hour .h-time{font-size:.72rem;opacity:.82;font-weight:500}
+  .hour .h-icon{font-size:1.5rem;margin:8px 0;line-height:1}
+  .hour .h-temp{font-size:.95rem;font-weight:600}
+  .hour .h-pop{font-size:.65rem;opacity:.75;margin-top:4px;color:#c6efff;min-height:1em}
+
+  /* ==========================================================
+     Diario
+     ========================================================== */
+  .daily{display:flex;flex-direction:column;gap:2px}
+  .day{
+    display:grid;grid-template-columns:82px 30px 44px minmax(50px,1fr) 44px;
+    align-items:center;gap:10px;padding:10px 6px;border-radius:14px;
+    transition:all .3s cubic-bezier(.34,1.56,.64,1);
+  }
+  .day:hover{background:rgba(255,255,255,.09);box-shadow:inset 0 1px 0 rgba(255,255,255,.2)}
+  .d-name{font-size:.87rem;font-weight:500;text-transform:capitalize;opacity:.95}
+  .d-icon{font-size:1.25rem;text-align:center;line-height:1}
+  .d-min{font-size:.87rem;opacity:.62;text-align:right}
+  .d-max{font-size:.87rem;font-weight:600;text-align:right}
+  .range{position:relative;height:6px;border-radius:3px;background:rgba(255,255,255,.16);overflow:hidden;box-shadow:inset 0 1px 1px rgba(0,0,0,.15)}
+  .range span{position:absolute;top:0;height:100%;border-radius:3px;background:linear-gradient(90deg,#7ee8fa,#ffd86f,#fc6262);box-shadow:0 0 8px rgba(255,216,111,.5)}
+
+  /* ==========================================================
+     Estados
+     ========================================================== */
+  .loading{text-align:center;padding:56px 24px}
+  .spinner{width:40px;height:40px;margin:0 auto 16px;border:3px solid rgba(255,255,255,.22);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}
+  .loading p{opacity:.82;font-size:.9rem}
+  .error{text-align:center;padding:44px 24px;font-size:1rem}
+  .error small{opacity:.65;font-size:.78rem;display:block;margin-top:8px}
+
+  .footer{text-align:center;font-size:.72rem;opacity:.55;margin-top:8px}
+  .footer a{color:#fff}
+
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:none}}
+
+  /* ==========================================================
+     ACCESIBILIDAD
+     ========================================================== */
+  @media (prefers-reduced-transparency: reduce){
+    .liquidGL{
+      background:#1a1f38 !important;
+      -webkit-backdrop-filter:none !important;
+      backdrop-filter:none !important;
+    }
+  }
+
+  @media (max-width:520px){
+    body{padding:16px 12px 40px}
+    .liquidGL > .content{padding:20px}
+    .temp{font-size:3.6rem;letter-spacing:-3px}
+    .now-row .icon{font-size:3.6rem}
+    .place h1{font-size:1.3rem}
+    .day{grid-template-columns:70px 26px 38px minmax(40px,1fr) 38px;gap:8px}
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     FONDO LÍQUIDO WEBGL
+     ============================================================ -->
+<canvas id="bg-canvas"></canvas>
+
+<div class="app">
+  <!-- Buscador como elemento Liquid Glass -->
+  <div class="topbar liquidGL" id="searchGlass">
+    <div class="content">
+      <form class="search" id="searchForm" autocomplete="off" style="display:contents">
+        <input id="searchInput" type="text" placeholder="Buscar ciudad…" spellcheck="false">
+        <button class="icon-btn" type="submit" title="Buscar">🔍</button>
+        <button class="icon-btn" type="button" id="geoBtn" title="Usar mi ubicación">📍</button>
+      </form>
+    </div>
+    <ul class="suggestions" id="suggestions"></ul>
+  </div>
+
+  <main id="app-main"></main>
+
+  <p class="footer">Datos meteorológicos de <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a> · Liquid Glass vía <a href="https://github.com/naughtyduk/liquidGL" target="_blank" rel="noopener">liquidGL</a></p>
+</div>
+
+<!-- ============================================================
+     SCRIPT PRINCIPAL (Carga garantizada del clima)
+     ============================================================ -->
+<script>
+/* ============================================================
+   Códigos WMO
+   ============================================================ */
+const WEATHER = {
+  0:{desc:'Despejado',icon:'☀️',night:'🌙'},1:{desc:'Mayormente despejado',icon:'🌤️',night:'🌙'},
+  2:{desc:'Parcialmente nublado',icon:'⛅',night:'☁️'},3:{desc:'Nublado',icon:'☁️'},
+  45:{desc:'Niebla',icon:'🌫️'},48:{desc:'Niebla con escarcha',icon:'🌫️'},
+  51:{desc:'Llovizna ligera',icon:'🌦️'},53:{desc:'Llovizna moderada',icon:'🌦️'},55:{desc:'Llovizna intensa',icon:'🌧️'},
+  56:{desc:'Llovizna helada ligera',icon:'🌧️'},57:{desc:'Llovizna helada intensa',icon:'🌧️'},
+  61:{desc:'Lluvia ligera',icon:'🌦️'},63:{desc:'Lluvia moderada',icon:'🌧️'},65:{desc:'Lluvia fuerte',icon:'🌧️'},
+  66:{desc:'Lluvia helada ligera',icon:'🌧️'},67:{desc:'Lluvia helada fuerte',icon:'🌧️'},
+  71:{desc:'Nevada ligera',icon:'🌨️'},73:{desc:'Nevada moderada',icon:'🌨️'},75:{desc:'Nevada fuerte',icon:'❄️'},
+  77:{desc:'Granos de nieve',icon:'🌨️'},80:{desc:'Chubascos ligeros',icon:'🌦️'},81:{desc:'Chubascos moderados',icon:'🌧️'},
+  82:{desc:'Chubascos fuertes',icon:'⛈️'},85:{desc:'Chubascos de nieve',icon:'🌨️'},86:{desc:'Chubascos de nieve fuertes',icon:'❄️'},
+  95:{desc:'Tormenta',icon:'⛈️'},96:{desc:'Tormenta con granizo',icon:'⛈️'},99:{desc:'Tormenta fuerte con granizo',icon:'⛈️'}
+};
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtTime = iso => String(iso).slice(11,16);
+
+function fmtDate(iso){
+  const d = new Date(iso);
+  const s = d.toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'});
+  return s.charAt(0).toUpperCase()+s.slice(1);
+}
+function dayName(iso,i){
+  if(i===0) return 'Hoy';
+  const d = new Date(iso);
+  const s = d.toLocaleDateString('es-ES',{weekday:'short'}).replace('.','');
+  return s.charAt(0).toUpperCase()+s.slice(1);
+}
+function weatherInfo(code,isDay){
+  const w = WEATHER[code] || {desc:'Desconocido',icon:'❓'};
+  return {desc:w.desc, icon:(!isDay && w.night) ? w.night : w.icon};
+}
+
+/* ============================================================
+   APIs
+   ============================================================ */
+async function geocode(query){
+  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=6&language=es&format=json`;
+  const res = await fetch(url);
+  if(!res.ok) throw new Error('Error al buscar la ciudad');
+  const data = await res.json();
+  return data.results || [];
+}
+async function reverseGeocode(lat,lon){
+  try{
+    const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=es`);
+    const d = await res.json();
+    const name = d.city || d.locality || d.principalSubdivision || 'Mi ubicación';
+    const subtitle = [d.principalSubdivision,d.countryName].filter(Boolean).join(', ');
+    return {name,subtitle};
+  }catch{ return {name:'Mi ubicación',subtitle:''}; }
+}
+
+/* ============================================================
+   Estado
+   ============================================================ */
+const state = { place:null, data:null };
+const els = {
+  form: $('#searchForm'), input: $('#searchInput'),
+  geo: $('#geoBtn'), sugg: $('#suggestions'), main: $('#app-main')
+};
+
+/* ============================================================
+   Cargar clima
+   ============================================================ */
+async function loadWeather(lat,lon,place){
+  showLoading();
+  try{
+    const params = new URLSearchParams({
+      latitude:lat, longitude:lon,
+      current:'temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m,pressure_msl',
+      hourly:'temperature_2m,weather_code,precipitation_probability',
+      daily:'weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_probability_max',
+      timezone:'auto', forecast_days:'7'
+    });
+    const res = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`);
+    if(!res.ok) throw new Error('No se pudo obtener el clima');
+    const data = await res.json();
+    state.place = place; state.data = data; render();
+    initGlass(); // Intentar aplicar WebGL después de pintar el HTML
+  }catch(err){
+    els.main.innerHTML = `<div class="liquidGL card"><div class="content error">😕 No se pudo obtener el clima.<small>${esc(err.message)}</small></div></div>`;
+    initGlass();
+  }
+}
+
+/* ============================================================
+   Render
+   ============================================================ */
+function render(){
+  const {place,data} = state;
+  const cur = data.current;
+  const isDay = cur.is_day === 1;
+  const info = weatherInfo(cur.weather_code,isDay);
+
+  const curKey = cur.time.slice(0,13);
+  let startIdx = data.hourly.time.findIndex(t => t.slice(0,13) >= curKey);
+  if(startIdx < 0) startIdx = 0;
+
+  const hours = data.hourly.time.slice(startIdx,startIdx+24).map((t,i)=>{
+    const idx = startIdx+i;
+    const code = data.hourly.weather_code[idx];
+    const dayFlag = Number(t.slice(11,13)) >= 6 && Number(t.slice(11,13)) < 20;
+    return { time:t, temp:data.hourly.temperature_2m[idx], pop:data.hourly.precipitation_probability[idx] ?? 0, icon:weatherInfo(code,dayFlag).icon };
+  });
+
+  const tMin = Math.min(...data.daily.temperature_2m_min);
+  const tMax = Math.max(...data.daily.temperature_2m_max);
+  const span = Math.max(tMax-tMin,0.001);
+
+  const days = data.daily.time.map((t,i)=>{
+    const min = data.daily.temperature_2m_min[i];
+    const max = data.daily.temperature_2m_max[i];
+    let left = ((min-tMin)/span)*100;
+    let width = ((max-min)/span)*100;
+    width = Math.max(width,5);
+    if(left+width > 100) left = 100-width;
+    return { name:dayName(t,i), icon:weatherInfo(data.daily.weather_code[i],true).icon, min:Math.round(min), max:Math.round(max), left, width };
+  });
+
+  els.main.innerHTML = `
+    <section class="liquidGL card">
+      <div class="content current">
+        <div class="place">
+          <h1>${esc(place.name)}</h1>
+          ${place.subtitle ? `<p class="region">${esc(place.subtitle)}</p>` : ''}
+          <p class="date">${esc(fmtDate(cur.time))}</p>
+        </div>
+        <div class="now-row">
+          <div class="icon">${info.icon}</div>
+          <div class="temp">${Math.round(cur.temperature_2m)}<sup>°C</sup></div>
+        </div>
+        <p class="desc">${esc(info.desc)}</p>
+        <p class="feels">Sensación térmica de ${Math.round(cur.apparent_temperature)}°</p>
+        <div class="stats">
+          ${stat('💧','Humedad',`${cur.relative_humidity_2m}%`)}
+          ${stat('💨','Viento',`${Math.round(cur.wind_speed_10m)} km/h`)}
+          ${stat('🌧️','Precipitación',`${cur.precipitation ?? 0} mm`)}
+          ${stat('🎚️','Presión',`${Math.round(cur.pressure_msl)} hPa`)}
+          ${stat('🌅','Amanecer',fmtTime(data.daily.sunrise[0]))}
+          ${stat('🌇','Atardecer',fmtTime(data.daily.sunset[0]))}
+        </div>
+      </div>
+    </section>
+
+    <section class="liquidGL card">
+      <div class="content">
+        <h2 class="section-title">Próximas 24 horas</h2>
+        <div class="hourly-scroll">
+          ${hours.map((h,i)=>`
+            <div class="hour ${i===0?'is-now':''}">
+              <div class="h-time">${i===0?'Ahora':fmtTime(h.time)}</div>
+              <div class="h-icon">${h.icon}</div>
+              <div class="h-temp">${Math.round(h.temp)}°</div>
+              <div class="h-pop">${h.pop>0?'💧'+h.pop+'%':''}</div>
+            </div>`).join('')}
+        </div>
+      </div>
+    </section>
+
+    <section class="liquidGL card">
+      <div class="content">
+        <h2 class="section-title">Pronóstico de 7 días</h2>
+        <div class="daily">
+          ${days.map(d=>`
+            <div class="day">
+              <span class="d-name">${esc(d.name)}</span>
+              <span class="d-icon">${d.icon}</span>
+              <span class="d-min">${d.min}°</span>
+              <div class="range"><span style="left:${d.left.toFixed(1)}%;width:${d.width.toFixed(1)}%"></span></div>
+              <span class="d-max">${d.max}°</span>
+            </div>`).join('')}
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function stat(icon,label,value){
+  return `<div class="stat"><div class="ico">${icon}</div><div class="lbl">${label}</div><div class="val">${esc(value)}</div></div>`;
+}
+function showLoading(){
+  els.main.innerHTML = `<div class="liquidGL card"><div class="content loading"><div class="spinner"></div><p>Cargando el clima…</p></div></div>`;
+}
+
+/* ============================================================
+   Sugerencias
+   ============================================================ */
+let debounceId = null;
+function hideSuggestions(){ els.sugg.classList.remove('show'); els.sugg.innerHTML=''; }
+
+async function showSuggestions(query){
+  try{
+    const results = await geocode(query);
+    if(!results.length){ hideSuggestions(); return; }
+    els.sugg.innerHTML = results.map(r=>{
+      const subtitle = [r.admin1,r.country].filter(Boolean).join(', ');
+      return `<li data-lat="${r.latitude}" data-lon="${r.longitude}" data-name="${esc(r.name)}" data-subtitle="${esc(subtitle)}">
+        <strong>${esc(r.name)}</strong><span>${esc(subtitle)}</span>
+      </li>`;
+    }).join('');
+    els.sugg.classList.add('show');
+  }catch{ hideSuggestions(); }
+}
+
+els.input.addEventListener('input', e=>{
+  clearTimeout(debounceId);
+  const q = e.target.value.trim();
+  if(q.length < 2){ hideSuggestions(); return; }
+  debounceId = setTimeout(()=>showSuggestions(q),320);
+});
+
+els.sugg.addEventListener('click', e=>{
+  const li = e.target.closest('li'); if(!li) return;
+  const {lat,lon,name,subtitle} = li.dataset;
+  els.input.value = name; hideSuggestions();
+  loadWeather(Number(lat),Number(lon),{name,subtitle});
+});
+
+document.addEventListener('click', e=>{
+  if(!e.target.closest('.topbar')) hideSuggestions();
+});
+
+/* ============================================================
+   Submit y geolocalización
+   ============================================================ */
+els.form.addEventListener('submit', async e=>{
+  e.preventDefault();
+  const q = els.input.value.trim(); if(!q) return;
+  hideSuggestions(); showLoading();
+  try{
+    const results = await geocode(q);
+    if(!results.length){
+      els.main.innerHTML = `<div class="liquidGL card"><div class="content error">🔍 No encontramos "${esc(q)}".<small>Prueba con otro nombre.</small></div></div>`;
+      initGlass(); return;
+    }
+    const r = results[0];
+    const subtitle = [r.admin1,r.country].filter(Boolean).join(', ');
+    els.input.value = r.name;
+    loadWeather(r.latitude,r.longitude,{name:r.name,subtitle});
+  }catch(err){
+    els.main.innerHTML = `<div class="liquidGL card"><div class="content error">😕 Error de conexión.<small>${esc(err.message)}</small></div></div>`;
+    initGlass();
+  }
+});
+
+els.geo.addEventListener('click', ()=>{
+  if(!navigator.geolocation){ els.main.innerHTML = `<div class="liquidGL card"><div class="content error">📍 Tu navegador no soporta geolocalización.</div></div>`; initGlass(); return; }
+  showLoading();
+  navigator.geolocation.getCurrentPosition(
+    async pos=>{
+      const {latitude,longitude} = pos.coords;
+      const place = await reverseGeocode(latitude,longitude);
+      els.input.value = place.name;
+      loadWeather(latitude,longitude,place);
+    },
+    err=>{
+      els.main.innerHTML = `<div class="liquidGL card"><div class="content error">📍 No pudimos obtener tu ubicación.<small>${esc(err.message)}</small></div></div>`;
+      initGlass();
+    },
+    {timeout:10000, maximumAge:300000}
+  );
+});
+
+/* ============================================================
+   Inicialización de Liquid Glass (con protección)
+   ============================================================ */
+let glassModule = null;
+let glassInitAttempted = false;
+
+async function initGlass(){
+  if(glassInitAttempted) return;
+  glassInitAttempted = true;
+
+  try {
+    // Carga dinámica del motor WebGL
+    const module = await import("https://cdn.jsdelivr.net/npm/liquid-gl@3.0.0/dist/liquidGL.js");
+    const liquidGL = module.default || module;
+
+    // Pequeño retardo para asegurar que el DOM está listo
+    setTimeout(() => {
+      try {
+        if (window.__glassInstance) {
+          try { window.__glassInstance.destroy(); } catch(e){}
+        }
+        window.__glassInstance = liquidGL({
+          engine: 'auto',
+          snapshot: 'body',
+          target: '.liquidGL',
+          resolution: Math.min(window.devicePixelRatio || 1, 2),
+          refraction: 0.025,
+          aberration: 0.12,
+          bevelDepth: 0.10,
+          bevelWidth: 0.18,
+          frost: 2,
+          tint: 'rgba(255,255,255,0.08)',
+          shadow: true,
+          specular: true,
+          interaction: 'fluid',
+          interactionStrength: 0.35,
+          interactionRadius: 0.30,
+          interactionViscosity: 0.65,
+          reveal: 'fade',
+          tilt: false,
+          draggable: false,
+          zIndex: 1,
+        });
+        console.log("✅ Liquid Glass (WebGL) inicializado correctamente.");
+      } catch(err) {
+        console.warn("⚠️ Liquid Glass no pudo iniciarse. Usando fallback CSS.", err);
+      }
+    }, 100);
+
+  } catch(err) {
+    console.warn("⚠️ No se pudo cargar el módulo WebGL (posible bloqueo por file://). Usando fallback CSS.", err);
+  }
+}
+
+/* ============================================================
+   Carga inicial
+   ============================================================ */
+(async function init(){
+  showLoading();
+  try{
+    const results = await geocode('Madrid');
+    if(results.length){
+      const r = results[0];
+      const subtitle = [r.admin1,r.country].filter(Boolean).join(', ');
+      els.input.value = r.name;
+      loadWeather(r.latitude,r.longitude,{name:r.name,subtitle});
+    }else{
+      els.main.innerHTML = `<div class="liquidGL card"><div class="content error">Escribe una ciudad para comenzar ☝️</div></div>`;
+      initGlass();
+    }
+  }catch{
+    els.main.innerHTML = `<div class="liquidGL card"><div class="content error">😕 No se pudo conectar con el servicio del clima.</div></div>`;
+    initGlass();
+  }
+})();
+</script>
+
+<!-- ============================================================
+     FONDO LÍQUIDO WEBGL (Shader propio)
+     ============================================================ -->
+<script>
+(function initLiquidBackground(){
+  const canvas = document.getElementById('bg-canvas');
+  const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+  if (!gl) {
+    document.body.style.background = 'linear-gradient(160deg,#1e6fd9,#4facfe,#7ee8fa)';
+    return;
+  }
+
+  const vertexSrc = `#version 300 es
+  in vec2 a_position;
+  void main(){ gl_Position = vec4(a_position, 0.0, 1.0); }`;
+
+  const fragmentSrc = `#version 300 es
+  precision highp float;
+  uniform vec2 u_resolution;
+  uniform float u_time;
+  uniform vec2 u_mouse;
+  out vec4 outColor;
+
+  float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+  float noise(vec2 p){
+    vec2 i = floor(p), f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + vec2(1,0)), u.x),
+               mix(hash(i + vec2(0,1)), hash(i + vec2(1,1)), u.x), u.y);
+  }
+  float fbm(vec2 p){
+    float v = 0.0, a = 0.5;
+    for(int i = 0; i < 5; i++){
+      v += a * noise(p);
+      p *= 2.0;
+      a *= 0.5;
+    }
+    return v;
+  }
+
+  void main(){
+    vec2 uv = gl_FragCoord.xy / u_resolution.xy;
+    vec2 p = uv * 3.0;
+    float t = u_time * 0.15;
+
+    float n1 = fbm(p + vec2(t, -t * 0.7));
+    float n2 = fbm(p * 1.8 + vec2(-t * 0.5, t * 1.2));
+    float liquid = smoothstep(0.35, 0.75, n1 * 0.6 + n2 * 0.4);
+
+    vec2 m = u_mouse * u_resolution;
+    float dist = length(gl_FragCoord.xy - m) / max(u_resolution.x, u_resolution.y);
+    float mouseWave = smoothstep(0.45, 0.0, dist) * 0.35;
+
+    vec3 deep = vec3(0.04, 0.10, 0.22);
+    vec3 mid  = vec3(0.12, 0.35, 0.65);
+    vec3 high = vec3(0.55, 0.85, 1.0);
+
+    vec3 col = mix(deep, mid, liquid);
+    col = mix(col, high, mouseWave);
+    col += vec3(0.10, 0.18, 0.25) * pow(liquid, 3.0);
+
+    float vig = smoothstep(0.0, 0.7, length(uv - 0.5));
+    col *= 1.0 - vig * 0.35;
+
+    outColor = vec4(col, 1.0);
+  }`;
+
+  function compile(type, src){
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src); gl.compileShader(s);
+    if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));
+    return s;
+  }
+
+  const prog = gl.createProgram();
+  gl.attachShader(prog, compile(gl.VERTEX_SHADER, vertexSrc));
+  gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, fragmentSrc));
+  gl.linkProgram(prog);
+  gl.useProgram(prog);
+
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+  const pos = gl.getAttribLocation(prog, 'a_position');
+  gl.enableVertexAttribArray(pos);
+  gl.vertexAttribPointer(pos, 2, gl.FLOAT, false, 0, 0);
+
+  const uRes = gl.getUniformLocation(prog, 'u_resolution');
+  const uTime = gl.getUniformLocation(prog, 'u_time');
+  const uMouse = gl.getUniformLocation(prog, 'u_mouse');
+
+  let mouse = { x: 0.5, y: 0.5 };
+  window.addEventListener('mousemove', e => {
+    mouse.x = e.clientX / window.innerWidth;
+    mouse.y = 1.0 - e.clientY / window.innerHeight;
+  });
+
+  function resize(){
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    gl.viewport(0, 0, canvas.width, canvas.height);
+  }
+  window.addEventListener('resize', resize); resize();
+
+  const start = performance.now();
+  function loop(){
+    const t = (performance.now() - start) / 1000;
+    gl.uniform2f(uRes, canvas.width, canvas.height);
+    gl.uniform1f(uTime, t);
+    gl.uniform2f(uMouse, mouse.x, mouse.y);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    requestAnimationFrame(loop);
+  }
+  loop();
+})();
+</script>
+</body>
+</html>
